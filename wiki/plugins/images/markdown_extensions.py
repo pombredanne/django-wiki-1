@@ -1,11 +1,11 @@
+# -*- coding: utf-8 -*-
 import markdown
 import re
 
 from django.template.loader import render_to_string
 from django.template import Context
-from wiki.core import article_markdown
 
-IMAGE_RE = re.compile(r'.*(\[image\:(?P<id>\d+)\s+align\:(?P<align>right|left|center)\s*\]).*',
+IMAGE_RE = re.compile(r'.*(\[image\:(?P<id>\d+)(\s+align\:(?P<align>right|left))?\s*\]).*',
                       re.IGNORECASE)
 
 from wiki.plugins.images import models
@@ -32,7 +32,7 @@ class ImagePreprocessor(markdown.preprocessors.Preprocessor):
             if m:
                 previous_line_was_image = True
                 image_id = m.group('id').strip()
-                alignment = m.group('align').strip()
+                alignment = m.group('align')
                 try:
                     image = models.Image.objects.get(article=self.markdown.article,
                                                     id=image_id,
@@ -54,7 +54,7 @@ class ImagePreprocessor(markdown.preprocessors.Preprocessor):
                     html_before, html_after = html.split(caption_placeholder)
                     placeholder_before = self.markdown.htmlStash.store(html_before, safe=True)
                     placeholder_after = self.markdown.htmlStash.store(html_after, safe=True)
-                    line = placeholder_before + "\n".join(caption_lines) + placeholder_after
+                    line = placeholder_before + "\n".join(caption_lines) + placeholder_after + "\n" + line
                     previous_line_was_image = False
             if not line is None:
                 new_text.append(line)

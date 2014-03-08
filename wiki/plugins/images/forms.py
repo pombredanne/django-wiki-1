@@ -5,7 +5,7 @@ from wiki.core.plugins.base import PluginSidebarFormMixin
 from wiki.plugins.images import models
 
 
-class SidebarForm(forms.ModelForm, PluginSidebarFormMixin):
+class SidebarForm(PluginSidebarFormMixin):
     
     def __init__(self, article, request, *args, **kwargs):
         self.article = article
@@ -45,6 +45,7 @@ class RevisionForm(forms.ModelForm):
             kwargs['commit'] = False
             revision = super(RevisionForm, self).save(*args, **kwargs)
             revision.inherit_predecessor(self.image, skip_image_file=True)
+            revision.deleted = False # Restore automatically if deleted
             revision.set_from_request(self.request)
             self.image.add_revision(self.instance, save=True)
             return revision

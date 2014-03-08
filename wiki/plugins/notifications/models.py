@@ -15,36 +15,36 @@ from wiki.plugins.notifications.util import get_title
 class ArticleSubscription(ArticlePlugin, Subscription):
     
     def __unicode__(self):
-        return (_(u"%(user)s subscribing to %(article)s (%(type)s)") % 
-                {'user': self.settings.user.username,
-                 'article': self.article.current_revision.title,
-                 'type': self.notification_type.label})
+        title = (_(u"%(user)s subscribing to %(article)s (%(type)s)") % 
+                 {'user': self.settings.user.username,
+                  'article': self.article.current_revision.title,
+                  'type': self.notification_type.label})
+        return unicode(title)
     
     class Meta:
         app_label = settings.APP_LABEL
     
 
 def default_url(article, urlpath=None):
-    try:
-        if not urlpath:
-            urlpath = wiki_models.URLPath.objects.get(articles=article)
-        url = reverse('wiki:get', kwargs={'path': urlpath.path})
-    except wiki_models.URLPath.DoesNotExist:
-        url = reverse('wiki:get', kwargs={'article_id': article.id})
-    return url
+    if urlpath:
+        return reverse('wiki:get', kwargs={'path': urlpath.path})
+    return article.get_absolute_url()
 
-def post_article_revision_save(instance, **kwargs):
+
+def post_article_revision_save(**kwargs):
+    instance = kwargs['instance']
     if kwargs.get('created', False):
         url = default_url(instance.article)
+        filter_exclude = {'settings__user': instance.user}
         if instance.deleted:
             notify(_(u'Article deleted: %s') % get_title(instance), settings.ARTICLE_EDIT,
-                   target_object=instance.article, url=url)
+                   target_object=instance.article, url=url, filter_exclude=filter_exclude)
         elif instance.previous_revision:
             notify(_(u'Article modified: %s') % get_title(instance), settings.ARTICLE_EDIT,
-                   target_object=instance.article, url=url)
+                   target_object=instance.article, url=url, filter_exclude=filter_exclude)
         else:
             notify(_(u'New article created: %s') % get_title(instance), settings.ARTICLE_EDIT,
-                   target_object=instance, url=url)
+                   target_object=instance, url=url, filter_exclude=filter_exclude)
             
 # Whenever a new revision is created, we notifý users that an article
 # was edited

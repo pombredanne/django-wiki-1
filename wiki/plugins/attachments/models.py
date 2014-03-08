@@ -1,11 +1,15 @@
+import os.path
+
 from django.db import models
 from django.utils.translation import ugettext_lazy as _
+from django.conf import settings as django_settings
 
 from . import settings
 
 from wiki import managers
 from wiki.models.pluginbase import ReusablePlugin
 from wiki.models.article import BaseRevisionMixin
+from django.db.models import signals
 
 class IllegalFileExtension(Exception):
     """File extension on upload is not allowed"""
@@ -15,22 +19,22 @@ class Attachment(ReusablePlugin):
 
     objects = managers.ArticleFkManager()
 
-    current_revision = models.OneToOneField('AttachmentRevision', 
-                                            verbose_name=_(u'current revision'),
-                                            blank=True, null=True, related_name='current_set',
-                                            help_text=_(u'The revision of this attachment currently in use (on all articles using the attachment)'),
-                                            )
+    current_revision = models.OneToOneField(
+        'AttachmentRevision', 
+        verbose_name=_(u'current revision'),
+        blank=True, null=True, related_name='current_set',
+        help_text=_(u'The revision of this attachment currently in use (on all articles using the attachment)'),
+    )
     
     original_filename = models.CharField(max_length=256, verbose_name=_(u'original filename'), blank=True, null=True)
 
-    def can_write(self, **kwargs):
-        user = kwargs.get('user', None)
+    def can_write(self, user):
         if not settings.ANONYMOUS and (not user or user.is_anonymous()):
             return False
-        return ReusablePlugin.can_write(self, **kwargs)
+        return ReusablePlugin.can_write(self, user)
     
     def can_delete(self, user):
-        return self.can_write(user=user)
+        return self.can_write(user)
     
     class Meta:
         verbose_name = _(u'attachment')
@@ -39,20 +43,24 @@ class Attachment(ReusablePlugin):
     
     def __unicode__(self):
         return "%s: %s" % (self.article.current_revision.title, self.original_filename)    
-        
-def upload_path(instance, filename):
-    from os import path
+
+def extension_allowed(filename):
     try:
         extension = filename.split(".")[-1]
     except IndexError:
         # No extension
         raise IllegalFileExtension("No file extension found in filename. That's not okay!")
-    
-    # Must be an allowed extension
     if not extension.lower() in map(lambda x: x.lower(), settings.FILE_EXTENSIONS):
         raise IllegalFileExtension("The following filename is illegal: %s. Extension has to be one of %s" % 
                                    (filename, ", ".join(settings.FILE_EXTENSIONS)))
-
+    
+    return extension
+    
+def upload_path(instance, filename):
+    from os import path
+    
+    extension = extension_allowed(filename)
+    
     # Has to match original extension filename
     if instance.id and instance.attachment and instance.attachment.original_filename:
         original_extension = instance.attachment.original_filename.split(".")[-1]
@@ -68,7 +76,10 @@ def upload_path(instance, filename):
         import random, hashlib
         m=hashlib.md5(str(random.randint(0,100000000000000)))
         upload_path = path.join(upload_path, m.hexdigest())
-    return path.join(upload_path, filename + '.upload')
+        
+    if settings.APPEND_EXTENSION:
+        filename += '.upload'
+    return path.join(upload_path, filename)
 
 
 class AttachmentRevision(BaseRevisionMixin, models.Model):
@@ -86,7 +97,7 @@ class AttachmentRevision(BaseRevisionMixin, models.Model):
         verbose_name = _(u'attachment revision')
         verbose_name_plural = _(u'attachment revisions')
         ordering = ('created',)
-        get_latest_by = ('revision_number',)
+        get_latest_by = 'revision_number'
         app_label = settings.APP_LABEL
         
     def get_filename(self):
@@ -136,3 +147,31 @@ class AttachmentRevision(BaseRevisionMixin, models.Model):
         return "%s: %s (r%d)" % (self.attachment.article.current_revision.title, 
                                  self.attachment.original_filename,
                                  self.revision_number)    
+
+
+def on_revision_delete(instance, *args, **kwargs):
+    if not instance.file:
+        return
+    
+    # Remove file
+    path = instance.file.path.split("/")[:-1]
+    instance.file.delete(save=False)
+    
+    # Clean up empty directories
+    
+    # Check for empty folders in the path. Delete the first two.
+    if len(path[-1]) == 32:
+        # Path was (most likely) obscurified so we should look 2 levels down
+        max_depth = 2
+    else:
+        max_depth = 1
+    for depth in range(0, max_depth):
+        delete_path = "/".join(path[:-depth] if depth > 0 else path)
+        try:
+            if len(os.listdir(os.path.join(django_settings.MEDIA_ROOT, delete_path))) == 0:
+                os.rmdir(delete_path)
+        except OSError:
+            # Raised by os.listdir if directory is missing
+            pass
+
+signals.pre_delete.connect(on_revision_delete, AttachmentRevision)

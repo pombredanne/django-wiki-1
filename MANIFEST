@@ -1,4 +1,8 @@
+include COPYING
 include README.md
+include README.rst
+include setup.cfg
 include requirements.txt
-recursive-include wiki *.html *.txt *.png *.js *.css *.gif
-recursive-include django_notify *.html *.txt *.png *.js *.css *.gif
+include model_chart_wiki.pdf
+recursive-include wiki *.html *.txt *.png *.js *.css *.gif *.less *.mo *.po *.otf *.svg *.woff *.eot *.ttf
+recursive-include django_notify *.html *.txt *.png *.js *.css *.gif *.mo *.po

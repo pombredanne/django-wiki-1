@@ -9,6 +9,7 @@ from django.utils.translation import ugettext as _
 Please have a look in wiki.models.pluginbase to see where to inherit your
 plugin's models.
 """
+from django import forms
 
 class BasePlugin(object):
     """Plugins should inherit from this"""
@@ -17,7 +18,10 @@ class BasePlugin(object):
     
     # Optional
     settings_form = None# A form class to add to the settings tab
-    urlpatterns = []
+    urlpatterns = {
+        'root': [], # General urlpatterns that will reside in /wiki/plugins/plugin-slug/...
+        'article': [], # urlpatterns that receive article_id or urlpath, i.e. /wiki/ArticleName/plugin/plugin-slug/...
+    }
     article_tab = None  #(_(u'Attachments'), "icon-file")
     article_view = None # A view for article_id/plugin/slug/
     notifications = []  # A list of notification handlers to be subscribed if the notification system is active
@@ -35,8 +39,13 @@ class BasePlugin(object):
         js = []
         css = {}
 
-class PluginSidebarFormMixin(object):
-
+class PluginSidebarFormMixin(forms.ModelForm):
+    
+    unsaved_article_title = forms.CharField(widget=forms.HiddenInput(),
+                                            required=True)
+    unsaved_article_content = forms.CharField(widget=forms.HiddenInput(),
+                                              required=False)
+    
     def get_usermessage(self):
         pass
 
